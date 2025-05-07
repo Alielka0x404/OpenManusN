@@ -1,0 +1,132 @@
+'use client';
+
+import logo from '@/assets/logo.png';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Send, Sparkles } from 'lucide-react';
+import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createTask } from '@/actions/tasks';
+import { useRecentTasks } from '@/components/features/app-sidebar';
+import { ChatInput } from '@/components/features/chat/input';
+
+const EmptyState = () => (
+  <div className="flex h-full flex-col items-center justify-center text-center px-4">
+    <div className="w-20 h-20 mb-6 rounded-full bg-primary/20 flex items-center justify-center">
+      <Sparkles className="h-10 w-10 text-primary" />
+    </div>
+    <h1 className="text-3xl font-bold mb-2 gradient-text">OpenManus AI</h1>
+    <p className="text-muted-foreground max-w-md mb-8">No fortress, purely open ground. OpenManus is Coming.</p>
+    <div className="flex flex-col gap-4 items-center">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl">
+        <Button 
+          variant="outline" 
+          className="flex items-center justify-start gap-3 p-4 h-auto bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)] hover:bg-[rgba(120,80,255,0.1)] hover:border-[rgba(120,80,255,0.2)]"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="text-left">
+            <div className="font-medium">Create a marketing plan</div>
+            <div className="text-sm text-muted-foreground">For a new product launch</div>
+          </div>
+        </Button>
+        <Button 
+          variant="outline" 
+          className="flex items-center justify-start gap-3 p-4 h-auto bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)] hover:bg-[rgba(120,80,255,0.1)] hover:border-[rgba(120,80,255,0.2)]"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="text-left">
+            <div className="font-medium">Analyze this dataset</div>
+            <div className="text-sm text-muted-foreground">Find patterns and insights</div>
+          </div>
+        </Button>
+        <Button 
+          variant="outline" 
+          className="flex items-center justify-start gap-3 p-4 h-auto bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)] hover:bg-[rgba(120,80,255,0.1)] hover:border-[rgba(120,80,255,0.2)]"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="text-left">
+            <div className="font-medium">Write a blog post</div>
+            <div className="text-sm text-muted-foreground">About AI advancements</div>
+          </div>
+        </Button>
+        <Button 
+          variant="outline" 
+          className="flex items-center justify-start gap-3 p-4 h-auto bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)] hover:bg-[rgba(120,80,255,0.1)] hover:border-[rgba(120,80,255,0.2)]"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="text-left">
+            <div className="font-medium">Create a web app</div>
+            <div className="text-sm text-muted-foreground">With React and Next.js</div>
+          </div>
+        </Button>
+      </div>
+    </div>
+  </div>
+);
+
+export default function ChatPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const { refreshTasks } = useRecentTasks();
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const handleSubmit = async (input: { modelId: string; prompt: string; tools: string[]; files: File[]; shouldPlan: boolean }) => {
+    if (!input || isLoading) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    setIsLoading(true);
+
+    try {
+      const res = await createTask({
+        modelId: input.modelId,
+        prompt: input.prompt,
+        tools: input.tools,
+        files: input.files,
+        shouldPlan: input.shouldPlan,
+      });
+      if (res.error || !res.data) {
+        throw new Error('Failed to create task');
+      }
+      await refreshTasks();
+      router.push(`/tasks/${res.data.id}`);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+      console.error('Error:', error);
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  return (
+    <div className="flex h-screen flex-col">
+      <div className="flex-1 overflow-y-auto pb-40">
+        <EmptyState />
+      </div>
+      <ChatInput onSubmit={handleSubmit} status={isLoading ? 'thinking' : 'idle'} />
+    </div>
+  );
+}

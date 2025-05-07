@@ -1,0 +1,47 @@
+import { ConfirmDialog } from '@/components/block/confirm';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
+import type { Metadata } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale } from 'next-intl/server';
+import { Geist, Geist_Mono } from 'next/font/google';
+import './globals.css';
+
+const geistSans = Geist({
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
+});
+
+const geistMono = Geist_Mono({
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
+
+export const metadata: Metadata = {
+  title: 'OpenManus - AI Agent',
+  description: 'No fortress, purely open ground. OpenManus is Coming.',
+};
+
+export default async function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  const locale = await getLocale();
+
+  return (
+    <html lang={locale} className="dark" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <ThemeProvider>
+          <div className="min-h-screen bg-gradient-to-b from-[#121212] to-[#080808] text-white">
+            <div className="absolute inset-0 bg-[url('/noise.png')] opacity-[0.02] pointer-events-none"></div>
+            <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-radial from-[rgba(120,80,255,0.15)] to-transparent opacity-60 blur-3xl pointer-events-none"></div>
+            <NextIntlClientProvider>{children}</NextIntlClientProvider>
+            <Toaster />
+            <ConfirmDialog />
+          </div>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}

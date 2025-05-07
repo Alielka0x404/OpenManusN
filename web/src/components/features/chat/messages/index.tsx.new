@@ -1,0 +1,307 @@
+import { Markdown } from '@/components/block/markdown/markdown';
+import { Badge } from '@/components/ui/badge';
+import { AggregatedMessage, Message } from '@/lib/chat-messages/types';
+import { formatNumber } from '@/lib/utils';
+import '@/styles/animations.css';
+import { StepBadge } from './step';
+import { ToolMessageContent } from './tools';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { Bot, User, Clock } from 'lucide-react';
+
+interface ChatMessageProps {
+  messages: AggregatedMessage[];
+}
+
+const UserMessage = ({ message }: { message: Message<{ request: string }> }) => (
+  <div className="message-bubble user slide-up">
+    <div className="flex items-start gap-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[rgba(255,255,255,0.1)]">
+        <User className="h-4 w-4 text-white" />
+      </div>
+      <div className="flex-1">
+        <Markdown className="chat">{message.content.request}</Markdown>
+      </div>
+    </div>
+  </div>
+);
+
+const PrepareMessage = ({ message }: { message: AggregatedMessage & { type: 'agent:lifecycle:prepare' } }) => {
+  const prepareCompleteMessage = message.messages.find(msg => msg.type === 'agent:lifecycle:prepare:complete') as
+    | (AggregatedMessage & { type: 'agent:lifecycle:prepare:complete' })
+    | undefined;
+
+  return (
+    <div className="message-bubble assistant slide-up">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20">
+          <Bot className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1">
+          <div className="mb-2 text-lg font-bold gradient-text">Manus</div>
+          {!prepareCompleteMessage ? (
+            <div className="text-muted-foreground mt-2 mb-2 font-mono text-xs">
+              <Badge
+                variant={prepareCompleteMessage ? 'outline' : 'default'}
+                className={cn('cursor-pointer font-mono text-xs', prepareCompleteMessage && 'text-muted-foreground')}
+              >
+                <span className="spinning-animation">⚙️ </span>
+                <span>Preparing...</span>
+              </Badge>
+            </div>
+          ) : (
+            <Badge variant="outline" className="cursor-pointer font-mono">
+              ⚙️ Prepared
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PlanMessage = ({ message }: { message: AggregatedMessage & { type: 'agent:lifecycle:plan' } }) => {
+  const planCompleteMessage = message.messages.find(msg => msg.type === 'agent:lifecycle:plan:complete') as
+    | (AggregatedMessage & { type: 'agent:lifecycle:plan:complete' })
+    | undefined;
+
+  return (
+    <div className="message-bubble assistant slide-up">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20">
+          <Bot className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1">
+          <div className="mb-2 text-lg font-bold gradient-text">Manus</div>
+          {planCompleteMessage ? (
+            <div className="space-y-2">
+              <div className="text-muted-foreground mt-2 mb-2 font-mono text-xs">
+                <Badge variant="outline" className="cursor-pointer font-mono text-xs">
+                  <span>📝 Plan Completed</span>
+                </Badge>
+              </div>
+              <Markdown className="chat">{planCompleteMessage?.content.plan}</Markdown>
+            </div>
+          ) : (
+            <div className="text-muted-foreground mt-2 mb-2 font-mono text-xs">
+              <Badge className="cursor-pointer font-mono text-xs">
+                <span className="thinking-animation">📝</span>
+                <span>Planning...</span>
+              </Badge>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface CompletionMessageProps {
+  message: Message<{ results: string[]; total_input_tokens: number; total_completion_tokens: number }>;
+}
+
+const CompletionMessage = ({ message }: CompletionMessageProps) => {
+  const showTokenCount = message.content.total_input_tokens || message.content.total_completion_tokens;
+  return (
+    <div className="message-bubble assistant slide-up">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20">
+          <Bot className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1">
+          <Badge className="cursor-pointer font-mono bg-green-500/20 text-green-400 border-green-500/30">
+            🎉 Awesome! Task Completed{' '}
+            {showTokenCount && (
+              <>
+                (
+                <span>
+                  {formatNumber(message.content.total_input_tokens || 0, { autoUnit: true })} input;{' '}
+                  {formatNumber(message.content.total_completion_tokens || 0, { autoUnit: true })} completion
+                </span>
+                )
+              </>
+            )}
+          </Badge>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface TerminatedMessageProps {
+  message: Message<{ total_input_tokens?: number; total_completion_tokens?: number }>;
+}
+
+const TerminatedMessage = ({ message }: TerminatedMessageProps) => {
+  const showTokenCount = message.content.total_input_tokens || message.content.total_completion_tokens;
+  return (
+    <div className="message-bubble assistant slide-up">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20">
+          <Bot className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1">
+          <Badge className="cursor-pointer font-mono bg-red-500/20 text-red-400 border-red-500/30">
+            🛑 Task Terminated By User{' '}
+            {showTokenCount && (
+              <>
+                (
+                <span>
+                  {formatNumber(message.content.total_input_tokens || 0, { autoUnit: true })} input;{' '}
+                  {formatNumber(message.content.total_completion_tokens || 0, { autoUnit: true })} completion
+                </span>
+                )
+              </>
+            )}
+          </Badge>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StepMessage = ({ message }: { message: AggregatedMessage & { type: 'agent:lifecycle:step' } }) => {
+  if (!('messages' in message)) return null;
+
+  const thinkMessage = message.messages.find(msg => msg.type === 'agent:lifecycle:step:think') as
+    | (AggregatedMessage & { type: 'agent:lifecycle:step:think' })
+    | undefined;
+
+  const toolSelectedMessage = thinkMessage?.messages.find(
+    (msg): msg is Message => 'type' in msg && msg.type === 'agent:lifecycle:step:think:tool:selected',
+  ) as (AggregatedMessage & { type: 'agent:lifecycle:step:think:tool:selected' }) | undefined;
+
+  return (
+    <div className="group mb-4 space-y-4">
+      {thinkMessage && (
+        <div className="message-bubble assistant slide-up">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20">
+              <Bot className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-lg font-bold gradient-text">Manus</div>
+                <div className="text-xs font-medium text-gray-500 italic opacity-0 transition-opacity duration-300 group-hover:opacity-100 hover:opacity-100 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {thinkMessage.createdAt
+                    ? new Date(thinkMessage.createdAt).toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : ''}
+                </div>
+              </div>
+              <StepBadge message={message} />
+              <div className="flex flex-col gap-2 space-y-2">
+                {toolSelectedMessage?.content.thoughts && <Markdown className="chat">{toolSelectedMessage?.content.thoughts}</Markdown>}
+                <ToolMessageContent message={message} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const LifecycleMessage = ({ message }: { message: AggregatedMessage }) => {
+  if (!('messages' in message)) return null;
+
+  return (
+    <div className="space-y-4">
+      {message.messages.map((msg, index) => {
+        if (!('type' in msg)) return null;
+
+        // Handle lifecycle start
+        if (msg.type === 'agent:lifecycle:start') {
+          return (
+            <div key={index} className="flex justify-end">
+              <UserMessage message={msg as Message<{ request: string }>} />
+            </div>
+          );
+        }
+
+        if (msg.type === 'agent:lifecycle:prepare') {
+          return (
+            <div key={index}>
+              <PrepareMessage message={msg as AggregatedMessage & { type: 'agent:lifecycle:prepare' }} />
+            </div>
+          );
+        }
+
+        if (msg.type === 'agent:lifecycle:plan') {
+          return (
+            <div key={index}>
+              <PlanMessage message={msg as AggregatedMessage & { type: 'agent:lifecycle:plan' }} />
+            </div>
+          );
+        }
+
+        // Handle lifecycle complete
+        if (msg.type === 'agent:lifecycle:complete') {
+          return (
+            <div key={index}>
+              <CompletionMessage message={msg as Message<{ results: string[]; total_input_tokens: number; total_completion_tokens: number }>} />
+            </div>
+          );
+        }
+
+        // Handle lifecycle terminated
+        if (msg.type === 'agent:lifecycle:terminated') {
+          return (
+            <div key={index}>
+              <TerminatedMessage message={msg} />
+            </div>
+          );
+        }
+
+        // Handle step messages
+        if (msg.type === 'agent:lifecycle:step') {
+          return (
+            <div key={index}>
+              <StepMessage message={msg as AggregatedMessage & { type: 'agent:lifecycle:step' }} />
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+};
+
+const ChatMessage = ({ message }: { message: AggregatedMessage }) => {
+  if (!message.type?.startsWith('agent:lifecycle')) {
+    return (
+      <div className="message-bubble assistant slide-up">
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20">
+            <Bot className="h-4 w-4 text-primary" />
+          </div>
+          <div className="flex-1">
+            <Markdown>{message.content}</Markdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <LifecycleMessage message={message} />;
+};
+
+export const ChatMessages = ({ messages = [] }: ChatMessageProps) => {
+  return (
+    <div className="space-y-6 px-4 py-6">
+      {messages.map((message, index) => (
+        <div key={message.index || index} className="first:pt-0">
+          <ChatMessage message={message} />
+        </div>
+      ))}
+    </div>
+  );
+};

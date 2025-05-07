@@ -1,0 +1,155 @@
+'use client';
+
+import { getTask, restartTask, terminateTask } from '@/actions/tasks';
+import { ChatInput } from '@/components/features/chat/input';
+import { ChatMessages } from '@/components/features/chat/messages';
+import { ChatPreview } from '@/components/features/chat/preview';
+import { usePreviewData } from '@/components/features/chat/preview/store';
+import { aggregateMessages } from '@/lib/chat-messages';
+import { Message } from '@/lib/chat-messages/types';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+
+export default function ChatPage() {
+  const params = useParams();
+  const router = useRouter();
+  const taskId = params.taskid as string;
+
+  const { setData: setPreviewData } = usePreviewData();
+
+  const [isNearBottom, setIsNearBottom] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
+  const [isTerminating, setIsTerminating] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const shouldAutoScroll = isNearBottom;
+
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+      const isNearBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 10;
+      setIsNearBottom(isNearBottom);
+    }
+  };
+
+  const scrollToBottom = () => {
+    if (messagesContainerRef.current && shouldAutoScroll) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  const refreshTask = async () => {
+    const res = await getTask({ taskId });
+    if (res.error || !res.data) {
+      console.error('Error fetching task:', res.error);
+      return;
+    }
+    setMessages(res.data.progresses.map(step => ({ ...step, index: step.index! || 0, type: step.type as any, role: 'assistant' as const })));
+    if (shouldAutoScroll) {
+      requestAnimationFrame(scrollToBottom);
+      const nextMessage = messages[messages.length - 1];
+      if (shouldAutoScroll) {
+        if (nextMessage?.type === 'agent:lifecycle:step:think:browser:browse:complete') {
+          setPreviewData({
+            type: 'browser',
+            url: nextMessage.content.url,
+            title: nextMessage.content.title,
+            screenshot: nextMessage.content.screenshot,
+          });
+        }
+        if (nextMessage?.type === 'agent:lifecycle:step:act:tool:execute:start') {
+          setPreviewData({ type: 'tool', toolId: nextMessage.content.id });
+        }
+      }
+    }
+    setIsThinking(res.data!.status !== 'completed' && res.data!.status !== 'failed' && res.data!.status !== 'terminated');
+    setIsTerminating(res.data!.status === 'terminating');
+  };
+
+  useEffect(() => {
+    setPreviewData(null);
+    if (!taskId) return;
+    refreshTask();
+  }, [taskId]);
+
+  useEffect(() => {
+    refreshTask();
+    if (!taskId || !isThinking) return;
+    const interval = setInterval(refreshTask, 2000);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [taskId, isThinking, shouldAutoScroll]);
+
+  useEffect(() => {
+    if (shouldAutoScroll) {
+      requestAnimationFrame(scrollToBottom);
+    }
+  }, [messages, shouldAutoScroll]);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const handleSubmit = async (value: { modelId: string; prompt: string; tools: string[]; files: File[]; shouldPlan: boolean }) => {
+    try {
+      const res = await restartTask({
+        taskId,
+        modelId: value.modelId,
+        prompt: value.prompt,
+        tools: value.tools,
+        files: value.files,
+        shouldPlan: value.shouldPlan,
+      });
+      if (res.error) {
+        console.error('Error restarting task:', res.error);
+      }
+      setIsThinking(true);
+      router.refresh();
+    } catch (error) {
+      console.error('Error submitting task:', error);
+    }
+  };
+
+  return (
+    <div className="flex h-screen w-full flex-row justify-between">
+      <div className="flex-1 relative">
+        <div className="relative flex h-screen flex-col">
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto pb-40"
+            style={{
+              scrollBehavior: 'smooth',
+              overscrollBehavior: 'contain',
+            }}
+            onScroll={handleScroll}
+          >
+            <div className="max-w-3xl mx-auto">
+              <ChatMessages messages={aggregateMessages(messages)} />
+            </div>
+          </div>
+          <ChatInput
+            status={isThinking ? 'thinking' : isTerminating ? 'terminating' : 'completed'}
+            onSubmit={handleSubmit}
+            onTerminate={async () => {
+              await terminateTask({ taskId });
+              router.refresh();
+            }}
+            taskId={taskId}
+          />
+        </div>
+      </div>
+      <div className="w-[45%] bg-[rgba(0,0,0,0.2)] border-l border-[rgba(255,255,255,0.05)] overflow-hidden">
+        <div className="h-full p-4">
+          <ChatPreview taskId={taskId} messages={messages} />
+        </div>
+      </div>
+    </div>
+  );
+}
